@@ -1,0 +1,331 @@
+---
+title: "qt10_read"
+format: html
+editor: visual
+---
+
+# SISTRANGAS MyQuorum
+
+Carga de archivos CSV
+
+```{r}
+#| echo: false
+#| results: hide
+library(pacman)
+
+# Use pacman to load and install the required packages
+pacman::p_load(
+  dplyr,
+  ggplot2,
+  kableExtra,
+  knitr,
+  lubridate,
+  magrittr,
+  RColorBrewer,
+  readr, # For reading and writing data
+  readxl,   # For reading Excel files
+  skimr,
+  stringr,
+  tidyverse,
+  tidyr,
+  writexl
+  )
+```
+
+## Section 1: Preparation
+
+Check working directory for this quarto
+
+```{r}
+#| echo: false
+#| results: hide
+
+getwd()
+```
+
+Setting path for reading files
+
+```{r}
+#| echo: false
+#| results: hide
+setwd("qt_inputs/qt10_inputs/myquorum")
+getwd()
+
+# ---- 01.02.01 Carga de archivos CSV
+flnm01 <- paste0("OperAvailCapacity_",
+                 format(seq.Date(as.Date("2025-01-01"),as.Date("2025-01-31"),
+                                 by = "day"), "%Y-%m-%d"),".csv")
+flnm02 <- paste0("OperAvailCapacity_",
+                 format(seq.Date(as.Date("2025-02-01"),as.Date("2025-04-04"),
+                                 by = "day"), "%Y-%m-%d"),".csv")
+
+# ---- 01.02.02 Creacion de lista para almacenar elementos
+
+flse01 <- lapply(flnm01, read.csv)
+flse02 <- lapply(flnm02, read.csv)
+```
+
+Combinacion archivo en uno
+
+```{r}
+#| echo: false
+#| results: hide
+
+fl01 <- do.call(rbind, flse01)
+fl02 <- do.call(rbind, flse02)
+
+nomination<- rbind(fl01,fl02)
+
+str(nomination)
+
+```
+
+First mutation to get dates correctly.
+
+```{r}
+#| echo: false
+#| results: hide
+nomination <- nomination %>%
+  mutate(
+    Post.Date.Time =
+      as.POSIXct(Post.Date.Time, format = "%m/%d/%Y %I:%M:%S %p"),
+    Eff.Gas.Day.Time =
+      as.POSIXct(Eff.Gas.Day.Time, format = "%m/%d/%Y %I:%M:%S %p"),
+    End.Eff.Gas.Day.Time =
+      as.POSIXct(End.Eff.Gas.Day.Time, format = "%m/%d/%Y %I:%M:%S %p"))
+
+
+```
+
+## Section 2: Effective dates and cycles
+
+```{r}
+#| echo: false
+inspec01 <- nomination %>%
+  filter(Loc == "V061", as.Date (Eff.Gas.Day.Time) == as.Date("2025-01-01") |
+           as.Date (Eff.Gas.Day.Time) == as.Date("2025-01-02")|
+           as.Date (Eff.Gas.Day.Time) == as.Date("2025-01-03")|
+           as.Date (Eff.Gas.Day.Time) == as.Date("2025-01-04")) %>%
+  select(1:4,16)
+
+knitr::kable(inspec01, caption = "Sample Data Table")
+
+# Convert column names to a data frame
+colnames_df <- data.frame(Column_Names = colnames(nomination))
+
+# Export to Excel
+
+write_xlsx(list(Sheet1 = inspec01, Sheet2 = colnames_df), "qt_outputs/qt10_outputs/nomination.xlsx")
+
+```
+
+```{r, out.width="80%", fig.align="center"}
+#| echo: false
+knitr::include_graphics("qt_inputs/qt10_inputs/myquorum_excel/nomination_sample.png")
+```
+
+```{r}
+#| echo: false
+inspec01$cycseq <- recode(inspec01$Cycle.Desc,
+                          'Timely' = 1,
+                          'Evening' = 2,
+                          'Intraday 1' = 3,
+                          'Intraday 2' = 4,
+                          'Intraday 3' = 5)
+
+inspec01_max <- inspec01 %>%
+  group_by(as.Date(Eff.Gas.Day.Time)) %>%
+  slice_max(order_by = cycseq, n = 1, with_ties = TRUE) %>%
+  ungroup()
+
+knitr::kable(inspec01_max, caption = "Sample Program Data Table")
+
+```
+
+## Section 3: Column inspection
+
+```{r}
+#| echo: false
+inspec02 <- nomination %>%
+  select(5:9,11:13) %>%
+  group_by(across(1:8)) %>%
+  summarise(n = n(), .groups = "drop")
+
+inspec02_loc_df <- data.frame(Loc = unique(nomination$Loc))
+
+flag02 <- if (nrow(inspec02) == nrow(inspec02_loc_df)) {
+  "OK"
+} else {
+  "review"
+}
+```
+
+The status of the inspection is `r flag02`.
+
+```{r}
+#| echo: false
+# Convert column names to a data frame
+inspec02_names <- data.frame(checked02 = colnames(inspec02))
+
+knitr::kable(inspec02_names, caption = "Retrieveable columns")
+```
+
+Output file: locations.rds
+
+```{r}
+#| echo: false
+locations <- inspec02 %>%
+  select(1:8)
+
+rm(inspec02)  # optional
+
+saveRDS(locations, file = "qt_outputs/qt10_outputs/locations.rds")
+
+```
+
+## Section 4: Relevant Columns
+
+```{r}
+#| echo: false
+
+nomination <- nomination %>%
+  select(2, 4:5, 10, 14:16)
+
+str(nomination)
+
+```
+
+Capacities inspection
+
+```{r}
+
+inspec03 <- nomination %>%
+  mutate(check03 = Operating.Capacity- Operationally.Available.Capacity - Total.Scheduled.Quantity) %>%
+  filter(check03 == 0)
+
+flag03 <- if (nrow(inspec03) == nrow(nomination)) {
+  "OK"
+} else {
+  "review"
+}
+  
+flag03
+```
+
+Quantities in thousands (GJ --\> TJ)
+
+```{r}
+nomination <- nomination %>%
+  mutate(Operating.Capacity =
+           Operating.Capacity / 1000) %>%
+  mutate(Operationally.Available.Capacity =
+           Operationally.Available.Capacity / 1000) %>%
+  mutate(Total.Scheduled.Quantity =
+           Total.Scheduled.Quantity / 1000)
+
+str(nomination)
+```
+
+## Inspeccion
+
+```{r}
+#| echo: false
+
+nomination$Cycle.Desc <- factor(nomination$Cycle.Desc,
+  levels = c("Timely", "Evening", "Intraday 1", "Intraday 2", "Intraday 3"),
+  ordered = TRUE)
+
+ggplot(nomination, aes(x = Cycle.Desc)) +
+  geom_bar(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Frequency of Cycles", x = "Cycle", y = "Count")
+
+```
+
+```{r}
+#| echo: false
+
+ggplot(nomination, aes(x = as.Date(Eff.Gas.Day.Time), y = Total.Scheduled.Quantity, color = Cycle.Desc)) +
+  geom_point(size = 0.4) +
+  theme_minimal() +
+  labs(title = "Scheduled Energy by Cycle", x = "day", y = "Energy TJ / day")
+
+```
+
+Use of factor to order cycles
+
+```{r}
+#| echo: false
+
+inspec01_max_alt <- nomination %>%
+  filter(Loc == "V061", as.Date (Eff.Gas.Day.Time) == as.Date("2025-01-01") |
+           as.Date (Eff.Gas.Day.Time) == as.Date("2025-01-02")|
+           as.Date (Eff.Gas.Day.Time) == as.Date("2025-01-03")|
+           as.Date (Eff.Gas.Day.Time) == as.Date("2025-01-04")) %>%
+  group_by(as.Date(Eff.Gas.Day.Time)) %>%
+  slice_max(order_by = Cycle.Desc, n = 1, with_ties = TRUE) %>%
+  ungroup()
+
+knitr::kable(inspec01_max_alt, caption = "Sample Program Data Table alt")
+
+knitr::kable(inspec01_max, caption = "Sample Program Data Table (previous")
+
+```
+
+```{r}
+#| echo: false
+### MAKING sure Cycle.Desc is explicitly ordered:
+
+nomination$Cycle.Desc <- factor(nomination$Cycle.Desc,
+  levels = c("Timely", "Evening", "Intraday 1", "Intraday 2", "Intraday 3"),
+  ordered = TRUE)
+
+scheduling <- nomination %>%
+  group_by(as.Date(Eff.Gas.Day.Time), Loc) %>%
+  slice_max(order_by = Cycle.Desc, n = 1, with_ties = TRUE) %>%
+  ungroup() %>%
+  mutate(Eff.Gas.Day = as.Date(Eff.Gas.Day.Time)) %>%
+  select(9, 2:3, 7)
+  
+str(scheduling)
+
+```
+
+```{r}
+#| echo: false
+# Set the target nodo
+target_loc <- "E016"
+
+# Filter for that nodo
+df_loc <- nomination %>%
+  filter(Loc == target_loc)
+
+# Get max cycle per date (for that nodo)
+df_prog <- scheduling %>%
+  filter(Loc == target_loc)
+
+# Plot
+ggplot(df_loc, aes(x = as.Date(Eff.Gas.Day.Time), y = Total.Scheduled.Quantity)) +
+  geom_point(aes(color = factor(Cycle.Desc)), size = 0.6, alpha = 0.9) +
+  geom_line(data = df_prog, aes(x = Eff.Gas.Day, y = Total.Scheduled.Quantity), color = "gray60", size = 0.5) +
+  scale_color_manual(
+    values = c("Timely" = "dodgerblue4", "Evening" = "dodgerblue", "Intraday 1" = "seagreen1", "Intraday 2" = "seagreen3", "Intraday 3" = "seagreen"),
+    name = "Cycle") +
+  labs(title = paste("Scheduled values for", target_loc),
+       x = "Date", y = "Scheduled Value") +
+  theme_minimal()
+
+```
+
+## Databases
+
+Output file: programation.rds
+
+Output file: confirmation.rds
+
+```{r}
+#| echo: false
+
+saveRDS(nomination, file = "qt_outputs/qt10_outputs/nomination.rds")
+saveRDS(scheduling, file = "qt_outputs/qt10_outputs/scheduling.rds")
+```
