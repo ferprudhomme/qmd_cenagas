@@ -1,0 +1,823 @@
+---
+title: "SISTRANGAS daily nominations"
+subtitle: "qt11_visual"
+format: html
+editor: visual
+---
+
+# Data
+
+```{r}
+#| echo: false
+#| results: hide
+library(pacman)
+
+# Use pacman to load and install the required packages
+pacman::p_load(
+  dplyr,
+  flextable,
+  ggplot2,
+  htmltools,
+  kableExtra,
+  knitr,
+  lubridate,
+  magrittr,
+  officer,
+  purrr,
+  RColorBrewer,
+  readr, # For reading and writing data
+  readxl,   # For reading Excel files
+  scales,
+  skimr,
+  stringr,
+  tidyverse,
+  tidyr,
+  webshot2,
+  writexl
+  )
+```
+
+```{r}
+#| echo: false
+#| results: hide
+
+# 1 - Define a Custom Theme Function
+theme_bloom <- function(base_size = 10, base_family = "sans") {
+  theme_minimal(base_size = base_size, base_family = base_family) +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(size = 10, margin = margin(b = 10)),
+      strip.text = element_text(face = "bold"),
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 5),
+
+      # Bloomberg-style y-axis (right only)
+      axis.title.y = element_blank(),
+      axis.text.y.left = element_blank(),
+      axis.ticks.y.left = element_blank(),
+      axis.line.y.left = element_blank(),
+
+      axis.text.y.right = element_text(),
+      axis.ticks.y.right = element_line(),
+      axis.line.y.right = element_line(),
+
+      legend.position = "bottom",  # 👈 moved here
+      legend.direction = "horizontal",
+      legend.justification = "center",
+      legend.box = "horizontal",
+      legend.title = element_text(face = "bold", size = 8),  # 👈 smaller title
+      legend.text = element_text(size = 7),                  # 👈 smaller labels
+      legend.margin = margin(t = 10),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_line(color = "grey85", linewidth = 0.2),  # 👈 lighter, thinner
+      panel.grid.minor.y = element_line(color = "grey90", linewidth = 0.15),   # 👈 optional minor grid
+
+      plot.caption = element_text(size = 7, hjust = 0, face = "italic", margin = margin(t = 10)),
+      plot.margin = margin(15, 20, 15, 20)  # top, right, bottom, left
+    )
+}
+
+# 2 - Define a Custom Color Scale Function
+# Parametrized Version of scale_color_bloom()
+# Default colors
+# scale_color_bloom()
+#
+# Custom colors
+# scale_color_bloom(values = c("grey30", "seagreen"))
+# 
+# Pass additional options 
+# scale_color_bloom(values = c("black", "darkorange"),name = "Tipo de operación")
+#
+# "dodgerblue"
+scale_color_bloom <- function(values = c("black", "turquoise"), ...) {
+  scale_color_manual(values = values, ...)
+}
+
+# 3 - Define a Custom Date Scale Function
+# Use default:
+# scale_x_sistra_date()
+#
+# Custom breaks:
+# scale_x_sistra_date(breaks = as.Date(c("2017-01-01", "2019-01-01", "2021-01-01")))
+#
+# Custom labels:
+# scale_x_sistra_date(breaks = as.Date(c("2018-06-01", "2020-06-01")),labels = c("Mid-2018", "Mid-2020"))
+#
+scale_x_bloom <- function(breaks = NULL, labels = NULL, ...) {
+  # Default breaks and labels if none provided
+  if (is.null(breaks)) {
+    breaks <- as.Date(c("2025-01-01", "2025-02-01", "2025-03-01", "2025-04-01"))
+  }
+  if (is.null(labels)) {
+    labels <- format(breaks, "%Y-%m")
+  }
+  
+  scale_x_date(breaks = breaks, labels = labels, ...)
+}
+
+# 4 reusable scale function
+#
+#   
+scale_y_bloom <- function() {
+  scale_y_continuous(position = "right")
+}
+
+# 5 make builder
+#
+make_bloom_plot <- function(data, x, y, color = NULL,
+                            title = "Título del gráfico",
+                            subtitle = "Subtítulo opcional",
+                            caption = NULL,  # 👈 new argument
+                            color_values = c("black", "turquoise"),
+                            x_breaks = NULL, x_labels = NULL,
+                            geom_type = c("point", "line")) {
+
+  # Handle inputs
+  geom_type <- match.arg(geom_type)
+  color_quo <- rlang::enquo(color)
+ 
+  # Start base ggplot
+  p <- ggplot(data, aes(x = {{ x }}, y = {{ y }}, color = !!color_quo))
+
+  # Add geom
+  if (geom_type == "point") {
+    p <- p + geom_point(size = 0.2, alpha = 0.5)
+  } else if (geom_type == "line") {
+    p <- p + geom_line(size = 0.4, alpha = 0.8)
+  }
+
+  # Add layers
+  p <- p +
+    labs(
+      title = title,
+      subtitle = subtitle,
+       caption = caption,  # 👈 added here
+      color = if (!rlang::quo_is_null(color_quo)) rlang::as_name(color_quo) else NULL
+    ) +
+    scale_color_bloom(values = color_values) +
+    scale_x_bloom(breaks = x_breaks, labels = x_labels) +
+    scale_y_bloom() +
+    theme_bloom() +
+    guides(x = guide_axis(n.dodge = 1))
+
+  return(p)
+}
+
+```
+
+```{r}
+#| echo: false
+#| results: hide
+
+locations <- readRDS("qt_inputs/qt11_inputs/locations.rds")
+
+str(locations)
+
+loc_purp <- unique(locations$Loc.Purp)
+```
+
+```{r}
+#| echo: false
+#| results: hide
+
+loc_rec <- locations %>%
+  filter(Loc.Purp == "M2")
+
+str(loc_rec)
+```
+
+## Locations info
+
+In the next @tbl-Sistrangas-receipt-locations all the receipt locations connected to SISTRANGAS are enlisted.
+
+```{r}
+#| label: tbl-Sistrangas-receipt-locations
+#| fig-width: 5
+#| fig-asp: 0.7
+#| echo: false
+#| tbl-cap: SISTRANGAS locations
+
+####
+#### CHOICE 1
+label_style <- "es"  # Choose: "es", "long", or "short"
+####
+####
+
+# Source type translations
+source_labels <- list(
+  long = c(
+    plant = "Processing plant",
+    field = "Production field",
+    border = "Border crossing",
+    imp_pipe = "Pipeline interconnection",
+    lng_terminal = "LNG terminal",
+    virtual = "Virtual point",
+    makeup = "Make-up gas",
+    None = "Other"
+  ),
+  short = c(
+    plant = "Plant",
+    field = "Field",
+    border = "Border",
+    imp_pipe = "Interconn.",
+    lng_terminal = "LNG",
+    virtual = "Virtual",
+    makeup = "Make-up",
+    None = "Other"
+  ),
+  es = c(
+    plant = "Planta de procesamiento",
+    field = "Campo de producción",
+    border = "Cruce fronterizo",
+    imp_pipe = "Interconexión ducto",
+    lng_terminal = "Terminal GNL",
+    virtual = "Punto virtual",
+    makeup = "Gas de reposición",
+    None = "Otro"
+  )
+)
+
+# Column names per language
+column_labels <- list(
+  long = c("Source type", "Node", "Name", "Design capacity (GJ/d)"),
+  short = c("Type", "Node", "Name", "Cap. (GJ/d)"),
+  es = c("Tipo de fuente", "Nodo", "Nombre", "Capacidad de diseño (GJ/d)")
+)
+
+# Caption per language
+caption_text <- ifelse(
+  label_style == "es",
+  "Puntos de recepción en SISTRANGAS",
+  "SISTRANGAS receipt locations"
+)
+
+# Transform data
+loc_rec <- loc_rec %>%
+  mutate(
+    source_type = case_when(
+      Loc %in% c("V025", "V905", "V907", "V908", "V9B6") ~ "plant",
+      Loc %in% c("V028", "V036", "V042", "V045", "V051", "V056", "V059", "V077") ~ "field",
+      Loc %in% c("V032", "V033", "V034", "V061", "V067") ~ "border",
+      Loc %in% c("V030", "V037", "V062", "V074", "V076", "V078", "V918") ~ "imp_pipe",
+      Loc %in% c("V055") ~ "lng_terminal",
+      Loc %in% c("V071", "V072", "V073", "V075", "V079") ~ "virtual",
+      Loc %in% c("MAKEUP 1", "MAKEUP 3", "MAKEUP 4", "MAKEUP 5", "MAKEUP 6", "MAKEUP 7", "MAKEUP 8") ~ "makeup",
+      TRUE ~ "None"
+    ),
+    source_type = source_labels[[label_style]][source_type],
+    Design.Capacity = comma(Design.Capacity, accuracy = 1)
+  ) %>%
+  arrange(source_type) %>%
+  select(source_type, Loc, Loc.Name, Design.Capacity)
+
+# Render stylized table
+if (nrow(loc_rec) > 0) {
+  kbl(
+    loc_rec,
+    align = "l",
+    caption = caption_text,
+    col.names = column_labels[[label_style]]
+  ) %>%
+    kable_styling(
+      bootstrap_options = c("condensed"),
+      full_width = TRUE,
+      font_size = 12) %>%
+    column_spec(1, bold = TRUE, color = "gray40", width = "10em") %>%
+    column_spec(2, width = "6em") %>%
+    column_spec(3, width = "12em") %>%
+    column_spec(4, extra_css = "text-align: right;", width = "8em") %>%  # ✅ correct
+    row_spec(0, bold = TRUE, color = "dodgerblue", extra_css = "border-bottom: 1px solid #DDD;") %>%
+    row_spec(1:nrow(loc_rec), bold = FALSE, extra_css = "border-bottom: 1px solid #EEE;")
+} else {
+  cat("⚠️ No data available.")
+}
+
+
+# Convert your data frame to a flextable object
+ft <- flextable(loc_rec)
+
+# Create and export the Word document
+doc <- read_docx() %>%
+  body_add_par("My Table Title", style = "heading 2") %>%
+  body_add_flextable(ft)
+
+# Save to Word file
+print(doc, target = "qt_outputs/qt11_outputs/table_output.docx")
+
+
+```
+
+### Scheduled and confirmed quantities
+
+The chart displays daily nominations under the NAESB cycle (dots) and the actual scheduled quantities (grey line) for five key injection points. This information is critical for assessing operational imbalances within the gas pipeline network.
+
+Scheduled quantities represent the flows that the pipeline operator has authorized for injection at each point. These injections must correspond either to:
+
+-   nominated volumes at downstream delivery points, or
+
+-   previously settled imbalance payments (e.g., over-deliveries or paybacks).
+
+Failing this correspondence, the injection creates a new operational imbalance that must be managed through balancing mechanisms such as tolerance bands, make-up withdrawals, or imbalance charges, depending on the pipeline's balancing agreement.
+
+```{r}
+#| echo: false
+#| results: hide
+
+scheduling <- readRDS("qt_inputs/qt11_inputs/scheduling.rds")
+nomination <- readRDS("qt_inputs/qt11_inputs/nomination.rds")
+
+```
+
+In the plot shown in @fig-Sistrangas-schedules-in-receipt-locations, each point represents the total scheduled quantity to be receipt in the next effective day.
+
+```{r}
+#| label: fig-Sistrangas-schedules-in-receipt-locations
+#| fig-width: 8
+#| fig-asp: 0.8
+#| fig-cap: SISTRANGAS scheduled quantities
+#| echo: false
+
+# Caption per language
+# Define caption dictionary
+captions <- list(
+  title01 = list(
+    es = "Flujos de energía nominados por punto (TJ/día)",
+    long = "Nominated Energy Flows by Point (TJ/day)",
+    short = "Nom. Energy by point (TJ/d)"
+  ),
+  title02 = list(
+    es = "Flujos de energía programados por punto (TJ/día)",
+    long = "Scheduled Energy Flows by Point (TJ/day)",
+    short = "Sched. Energy by point (TJ/d)"
+  ),
+  subtitle = list(
+    es = "Recepción y entrega de gas",
+    long = "Receipt and deliveries",
+    short = "Rec/Del"
+  ),
+   name = list(
+    es = "Ciclo",
+    long = "Cycle",
+    short = "Cycle"
+  ),
+  x_eje = list(
+    es = "Día",
+    long = "Day",
+    short = "Day"
+  )
+)
+
+# Select captions dynamically
+capt_title01 <- captions$title01[[label_style]]
+capt_title02 <- captions$title02[[label_style]]
+capt_subt  <- captions$subtitle[[label_style]]
+capt_name  <- captions$name[[label_style]]
+capt_x  <- captions$x_eje[[label_style]]
+
+p <-ggplot(data = nomination, aes(x = as.Date(Eff.Gas.Day.Time), y = Total.Scheduled.Quantity, color = Cycle.Desc)) +
+  geom_point(size = 0.6, alpha = 0.9) +
+  scale_color_manual(
+    values = c("Timely" = "dodgerblue4", "Evening" = "dodgerblue", "Intraday 1" = "seagreen1", "Intraday 2" = "seagreen3", "Intraday 3" = "seagreen"),
+    name = paste(capt_name)) +
+    labs(title = paste(capt_title01),
+         subtitle = paste(capt_subt),
+       x = paste(capt_x)) +
+  theme_bloom() +
+  scale_x_bloom() +
+  scale_y_bloom()
+
+print(p)
+```
+
+In the plot shown in the next @fig-Sistrangas-confirmed-in-receipt-locations, it is possible to see the programmed quantities effective to each day. It matches with the scheduled values at the latest nomination cycle.
+
+```{r}
+#| label: fig-Sistrangas-confirmed-in-receipt-locations
+#| fig-width: 8
+#| fig-asp: 0.8
+#| fig-cap: SISTRANGAS confirmed quantities
+#| echo: false
+p <-ggplot(data = scheduling, aes(x = Eff.Gas.Day, y = Total.Scheduled.Quantity)) +
+  geom_point(color = "black", size = 0.5) +
+  labs(title = paste(capt_title02),
+         subtitle = paste(capt_subt),
+       x = paste(capt_x)) +
+  theme_bloom() +
+  scale_x_bloom() +
+  scale_y_bloom()
+
+print(p)
+
+
+```
+
+# General Survey
+
+## Location sample
+
+1 plant : Cactus 1 border : Ramones 1 field : Mendoza 1 imp-pipe : Gaza (Gasoducto Zapotlanejo)
+
+```{r}
+#| echo: false
+smp <- loc_rec %>%
+  filter(Loc %in% c("V025", "V061", "V045","V076" )) %>%
+  select(2)
+
+# Filter for that nodo
+nomin_smp <- nomination %>%
+  inner_join(smp, by = "Loc")
+
+# Get max cycle per date (for that nodo)
+sched_smp <- scheduling %>%
+  inner_join(smp, by = "Loc")
+
+```
+
+### Plot
+
+@fig-Sistrangas-location
+
+```{r}
+#| label: fig-Sistrangas-location
+#| fig-width: 8
+#| fig-asp: 0.8
+#| fig-cap: SISTRANGAS' Location sample
+#| echo: false
+
+captions <- list(
+  title01 = list(
+    es = "Energía programada por punto (TJ/día)",
+    long = "Scheduled Energy Flows by Receipt Point (TJ/day)",
+    short = "Sched. Energy by point (TJ/d)"
+  ),
+  subtitle = list(
+    es = "Nodos clave de entrada: Cactus, Mendoza, Ramones, Gaza",
+    long = "Key Entry Nodes: Cactus, Mendoza, Ramones, Gaza",
+    short = "Nodos clave"
+  ),
+   name = list(
+    es = "Ciclo",
+    long = "Cycle",
+    short = "Cycle"
+  ),
+  x_eje = list(
+    es = "Día",
+    long = "Day",
+    short = "Day"
+  )
+)
+
+# Select captions dynamically
+capt_title01 <- captions$title01[[label_style]]
+capt_subt  <- captions$subtitle[[label_style]]
+capt_name  <- captions$name[[label_style]]
+capt_x  <- captions$x_eje[[label_style]]
+
+p <-ggplot(data = nomin_smp, aes(x = as.Date(Eff.Gas.Day.Time), y = Total.Scheduled.Quantity)) +
+  geom_point(aes(color = factor(Cycle.Desc)), size = 0.6, alpha = 0.9) +
+  geom_line(data = sched_smp, aes(x = Eff.Gas.Day, y = Total.Scheduled.Quantity), color = "gray60", size = 0.5) +
+  scale_color_manual(
+    values = c("Timely" = "dodgerblue4", "Evening" = "dodgerblue", "Intraday 1" = "seagreen1", "Intraday 2" = "seagreen3", "Intraday 3" = "seagreen"),
+    name = paste(capt_name)) +
+    labs(title = paste(capt_title01),
+         subtitle = paste(capt_subt),
+       x = paste(capt_x)) +
+  theme_bloom() +
+  scale_x_bloom() +
+  scale_y_bloom() +
+   facet_wrap(~Loc, ncol = 2, scales = "free_y")
+
+print(p)
+
+# Save the plot with high quality
+ggsave("qt_outputs/qt11_outputs/images/sistra_keyplot.png", plot = p,
+       width = 8, height = 4, dpi = 300, units = "in", bg = "white")
+
+```
+
+## Makeups by Tariff Zone
+
+```{r}
+#| echo: false
+
+smp <- loc_rec %>%
+  filter(Loc %in% c("MAKEUP 3", "MAKEUP 4", "MAKEUP 6","MAKEUP 8")) %>%
+  select(2)
+
+
+# Filter for that nodo
+nomin_smp <- nomination %>%
+  inner_join(smp, by = "Loc")
+
+# Get max cycle per date (for that nodo)
+sched_smp <- scheduling %>%
+  inner_join(smp, by = "Loc")
+
+```
+
+### Plot
+
+The next @fig-Sistrangas-make-ups
+
+```{r}
+#| label: fig-Sistrangas-make-ups
+#| fig-width: 8
+#| fig-asp: 0.8
+#| fig-cap: Gas Make-up Volumes by Tariff Zone in SISTRANGAS
+#| echo: false
+
+captions <- list(
+  title01 = list(
+    es = "Seguimiento de gas de reposición por zonas tarifarias (TJ/día)",
+    long = "Make-up Gas Tracking Across Tariff Zones (TJ/day)",
+    short = "Make-ups by point (TJ/d)"
+  ),
+  subtitle = list(
+    es = "Nominaciones y programaciones: Zonas 3, 4, 6 y 8",
+    long = "Nominations and Schedules: Zones 3, 4, 6, 8",
+    short = "Zones 3, 4, 6, 8"
+  ),
+   name = list(
+    es = "Ciclo",
+    long = "Cycle",
+    short = "Cycle"
+  ),
+  x_eje = list(
+    es = "Día",
+    long = "Day",
+    short = "Day"
+  )
+)
+
+# Select captions dynamically
+capt_title01 <- captions$title01[[label_style]]
+capt_subt  <- captions$subtitle[[label_style]]
+capt_name  <- captions$name[[label_style]]
+capt_x  <- captions$x_eje[[label_style]]
+
+
+p <-ggplot(data = nomin_smp, aes(x = as.Date(Eff.Gas.Day.Time), y = Total.Scheduled.Quantity)) +
+  geom_point(aes(color = factor(Cycle.Desc)), size = 0.6, alpha = 0.9) +
+  geom_line(data = sched_smp, aes(x = Eff.Gas.Day, y = Total.Scheduled.Quantity), color = "gray60", size = 0.5) +
+  scale_color_manual(
+    values = c("Timely" = "dodgerblue4", "Evening" = "dodgerblue", "Intraday 1" = "seagreen1", "Intraday 2" = "seagreen3", "Intraday 3" = "seagreen"),
+    name = paste(capt_name)) +
+    labs(title = paste(capt_title01),
+         subtitle = paste(capt_subt),
+       x = paste(capt_x)) +
+  theme_bloom() +
+  scale_x_bloom() +
+  scale_y_bloom() +
+   facet_wrap(~Loc, ncol = 2, scales = "free_y")
+
+print(p)
+
+# Save the plot with high quality
+ggsave("qt_outputs/qt11_outputs/images/sistra_keyplot.png", plot = p,
+       width = 8, height = 4, dpi = 300, units = "in", bg = "white")
+
+```
+
+```{r}
+#| echo: false
+# Get all unique source types
+source_types <- unique(loc_rec$source_type)
+
+
+captions <- list(
+  title01 = list(
+    es = "Energía programada (TJ/día)",
+    long = "Scheduled Energy (TJ/day)",
+    short = "Sched. Ene. (TJ/d)"
+  ),
+  subtitle = list(
+    es = "Desglose por fuente",
+    long = "Breakdown by Source",
+    short = "Breakdown"
+  ),
+   name = list(
+    es = "Ciclo",
+    long = "Cycle",
+    short = "Cycle"
+  ),
+  x_eje = list(
+    es = "Día",
+    long = "Day",
+    short = "Day"
+  )
+)
+
+# Select captions dynamically
+capt_title01 <- captions$title01[[label_style]]
+capt_subt  <- captions$subtitle[[label_style]]
+capt_name  <- captions$name[[label_style]]
+capt_x  <- captions$x_eje[[label_style]]
+
+
+
+# Create a named list of plots
+plots_by_type <- map(source_types, function(type) {
+
+  # Filter locs for current type
+  smp <- loc_rec %>%
+    filter(source_type == type) %>%
+    select(Loc)
+
+  # Filter nomination and scheduling
+  nomin_smp <- nomination %>%
+    inner_join(smp, by = "Loc")
+
+  sched_smp <- scheduling %>%
+    inner_join(smp, by = "Loc")
+
+########  
+
+  # Generate the plot
+  p <- ggplot(data = nomin_smp, aes(x = as.Date(Eff.Gas.Day.Time), y = Total.Scheduled.Quantity)) +
+    geom_point(aes(color = factor(Cycle.Desc)), size = 0.6, alpha = 0.9) +
+    geom_line(data = sched_smp, aes(x = Eff.Gas.Day, y = Total.Scheduled.Quantity), color = "gray60", alpha = 0.6, size = 0.5) +
+    scale_color_manual(
+    values = c("Timely" = "dodgerblue4", "Evening" = "dodgerblue", "Intraday 1" = "seagreen1", "Intraday 2" = "seagreen3", "Intraday 3" = "seagreen"),
+    name = paste(capt_name)) +
+    labs(title = paste(capt_title01),
+         subtitle = paste(capt_subt, ": ", type),
+       x = paste(capt_x)) +
+  theme_bloom() +
+  scale_x_bloom() +
+  scale_y_bloom() +
+  facet_wrap(~Loc, ncol = 3, scales = "free_y")
+
+  return(p)
+})
+
+# Name the list for easier access
+names(plots_by_type) <- source_types
+
+
+```
+
+```{r}
+#| echo: false
+# label_style should be one of: "es", "long", "short"
+tr <- function(es, long, short) {
+  if (label_style == "es") {
+    es
+  } else if (label_style == "long") {
+    long
+  } else {
+    short
+  }
+}
+
+# Correct argument order: (es, long, short)
+filter_01 <- tr(
+  "Planta de procesamiento",  # Spanish
+  "Processing plant",         # English long
+  "Plant"                     # English short
+)
+
+filter_02 <- tr(
+  "Campo de producción",  # Spanish
+  "Production field",         # English long
+  "Field"                     # English short
+)
+
+filter_03 <- tr(
+  "Cruce fronterizo",  # Spanish
+  "Border crossing",         # English long
+  "Border"                     # English short
+)
+
+filter_04 <- tr(
+  "Interconexión ducto",  # Spanish
+  "Pipeline interconnection",         # English long
+  "Interconn."                     # English short
+)
+
+filter_05 <- tr(
+  "Terminal GNL",  # Spanish
+  "LNG terminal",         # English long
+  "LNG"                     # English short
+)
+
+ filter_06 <- tr(
+  "Punto virtual",  # Spanish
+  "Virtual point",         # English long
+  "Virtual"                     # English short
+)
+ 
+ filter_07 <- tr(
+  "Gas de reposición",  # Spanish
+  "Make-up gas",         # English long
+  "Make-up"                     # English short
+)
+```
+
+```{r}
+#| echo: false
+# Access the plot
+plots_by_type[[filter_01]]
+
+```
+
+```{r}
+#| echo: false
+# Access the plot
+plots_by_type[[filter_02]]
+
+```
+
+```{r}
+#| echo: false
+# Access the plot
+plots_by_type[[filter_03]]
+
+```
+
+```{r}
+#| echo: false
+# Access the plot
+plots_by_type[[filter_04]]
+```
+
+```{r}
+#| echo: false
+# Access the plot
+plots_by_type[[filter_05]]
+```
+
+```{r}
+#| echo: false
+#| # Access the plot
+plots_by_type[[filter_06]]
+```
+
+# Today's report
+
+```{r}
+#| echo: false
+# Get all unique source types
+sched.last.day <- scheduling %>%
+  filter(Eff.Gas.Day == max(unique(scheduling$Eff.Gas.Day)))
+
+# Create a named list of plots
+sched_by_type <- map(source_types, function(type) {
+
+  # Filter locs for current type
+  smp <- loc_rec %>%
+    filter(source_type == type) %>%
+    select(Loc, Loc.Name)
+
+  sched_smp <- sched.last.day %>%
+    inner_join(smp, by = "Loc")
+
+  # Generate the plot
+  p <- ggplot(data = sched_smp, aes(x = Loc.Name, y = Total.Scheduled.Quantity)) +
+       geom_bar(stat = "identity", fill = "dodgerblue") +
+    labs(title = paste("Scheduled Energy on", max(unique(scheduling$Eff.Gas.Day)) ,"(TJ/day)"),
+         subtitle = paste("Breakdown by ", type, "Location"),
+       x = "Location") +
+  theme_bloom() +
+  scale_y_bloom()
+  
+  return(p)
+})
+
+# Name the list for easier access
+names(sched_by_type) <- source_types
+
+```
+
+```{r}
+#| echo: false
+sched_by_type[[filter_01]]
+
+```
+
+```{r}
+#| echo: false
+sched_by_type[[filter_02]]
+
+```
+
+```{r}
+#| echo: false
+sched_by_type[[filter_03]]
+
+```
+
+```{r}
+#| echo: false
+sched_by_type[[filter_04]]
+
+```
+
+# Filter Makeups and virtual
+
+```{r}
+#| echo: false
+loc_effe <- loc_rec %>%
+  filter(!source_type %in% c(filter_06, filter_07))
+
+saveRDS(loc_effe, file = "qt_outputs/qt11_outputs/loc_effe.rds")
+```

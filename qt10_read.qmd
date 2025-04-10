@@ -56,7 +56,7 @@ flnm01 <- paste0("OperAvailCapacity_",
                  format(seq.Date(as.Date("2025-01-01"),as.Date("2025-01-31"),
                                  by = "day"), "%Y-%m-%d"),".csv")
 flnm02 <- paste0("OperAvailCapacity_",
-                 format(seq.Date(as.Date("2025-02-01"),as.Date("2025-04-04"),
+                 format(seq.Date(as.Date("2025-02-01"),as.Date("2025-04-08"),
                                  by = "day"), "%Y-%m-%d"),".csv")
 
 # ---- 01.02.02 Creacion de lista para almacenar elementos
@@ -94,6 +94,42 @@ nomination <- nomination %>%
     End.Eff.Gas.Day.Time =
       as.POSIXct(End.Eff.Gas.Day.Time, format = "%m/%d/%Y %I:%M:%S %p"))
 
+```
+
+### Section 1.1 Non-zero locations
+
+For each location: • Calculate the maximum scheduled gas quantity (ignoring missing values). • Keep only the locations where the maximum scheduled quantity is zero, i.e., locations with no scheduled nominations at all.
+
+```{r}
+loc_max_zero <- nomination %>%
+  group_by(Loc) %>%
+  summarise(maximo = max(Total.Scheduled.Quantity, na.rm = TRUE),
+            nombre = first(Loc.Name),
+            .groups = "drop") %>%
+  filter( maximo == 0)
+
+knitr::kable(loc_max_zero, caption = "Location with zero nomination")
+
+```
+
+For each location: • maximo: find the maximum scheduled quantity, ignoring missing values. • Keep only locations where the maximum scheduled quantity is greater than zero (i.e., locations that had at least some activity).
+
+```{r}
+loc_max_zero <- nomination %>%
+  group_by(Loc) %>%
+  summarise(maximo = max(Total.Scheduled.Quantity, na.rm = TRUE),
+            nombre = first(Loc.Name),
+            .groups = "drop") %>%
+  filter( maximo > 0)
+
+knitr::kable(loc_max_zero, caption = "Location with zero nomination")
+```
+
+the nomination dataset is filtered to keep only rows for active locations, and attaching a summary column (maximo) and a name (nombre) to each row.
+
+```{r}
+nomination <- nomination %>%
+  inner_join(loc_max_zero, by = "Loc")
 
 ```
 
@@ -279,7 +315,9 @@ knitr::kable(inspec01_max, caption = "Sample Program Data Table (previous")
 nomination$Cycle.Desc <- factor(nomination$Cycle.Desc,
   levels = c("Timely", "Evening", "Intraday 1", "Intraday 2", "Intraday 3"),
   ordered = TRUE)
+```
 
+```{r}
 scheduling <- nomination %>%
   group_by(as.Date(Eff.Gas.Day.Time), Loc) %>%
   slice_max(order_by = Cycle.Desc, n = 1, with_ties = TRUE) %>%
@@ -319,9 +357,9 @@ ggplot(df_loc, aes(x = as.Date(Eff.Gas.Day.Time), y = Total.Scheduled.Quantity))
 
 ## Databases
 
-Output file: programation.rds
+Output file: nomination.rds
 
-Output file: confirmation.rds
+Output file: scheduling.rds
 
 ```{r}
 #| echo: false

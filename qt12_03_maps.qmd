@@ -1,0 +1,175 @@
+---
+title: "qt12_03_maps"
+format: html
+---
+
+# Check previous Maps
+
+```{r}
+#| echo: false
+#| results: hide
+library(pacman)
+
+# Use pacman to load and install the required packages
+pacman::p_load(
+  arrow,
+  dplyr,
+  flextable,
+  ggplot2,
+  ggspatial,
+  htmltools,
+  htmlwidgets,
+  kableExtra,
+  knitr,
+  leaflet,
+  lubridate,
+  magrittr,
+  mapview,
+  officer,
+  purrr,
+  RColorBrewer,
+  readr, # For reading and writing data
+  readxl,   # For reading Excel files
+  rnaturalearth,
+  rnaturalearthdata,
+  scales,
+  skimr,
+  sf,
+  stringr,
+  tidyverse,
+  tidyr,
+  viridis,
+  webshot2,
+  writexl
+  )
+```
+
+```{r}
+#| echo: false
+# sistrangas
+injection_map02 <- readRDS("qt_outputs/qt12_outputs/injection_map02.rds")
+
+injection_map02
+
+```
+
+# New Map
+
+```{r}
+#| echo: false
+#| results: hide
+
+# Define the folder and expected filenames
+zone_folder <- "qt_inputs/qt12_inputs/zone_kml/"
+zone_files <- paste0(zone_folder, "Zona ", 1:9, ".kml")
+
+# Read, clean, and transform all zones
+zone_list <- lapply(zone_files, function(file) {
+  st_read(file, quiet = TRUE) %>%
+    st_zm(drop = TRUE, what = "ZM") %>%
+    st_transform(crs = 4326)
+})
+
+# Name each element in the list for easy access
+names(zone_list) <- paste0("zona_", 1:9)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Create and display the map with leaflet
+# Choose which zones to include
+# Choose which zones to include
+selected_zones <- c(5, 6)  # ← Change this vector to select different zones
+
+# Base map (already created)
+injection_map03 <- injection_map02
+
+# Add selected zones to the map
+for (i in selected_zones) {
+  zone_data <- zone_list[[paste0("zona_", i)]]
+  
+  zone_color <- RColorBrewer::brewer.pal(9, "Dark2")[i]  # Optional: assign distinct colors
+
+  injection_map03 <- injection_map03 %>%
+    addPolygons(
+      data = zone_data,
+      color = zone_color,
+      weight = 1,
+      fillOpacity = 0.2,
+      popup = ~Name,
+      group = paste0("Zona Tarifaria ", i)
+    )
+}
+
+# Optional: add legend for selected zones
+injection_map03 <- injection_map03 %>%
+  addLegend(
+    position = "bottomright",
+    colors = RColorBrewer::brewer.pal(9, "Dark2")[selected_zones],
+    labels = paste("Zona Tarifaria", selected_zones),
+    title = "Zonas Tarifarias",
+    opacity = 0.6
+  )
+
+# Show map
+injection_map03
+
+```
+
+```{r}
+#| echo: false
+#| results: hide
+saveRDS(injection_map03, "qt_outputs/qt12_outputs/injection_map03.rds")
+
+```
+
+## New map formatted
+
+```{r}
+#| echo: false
+#| warning: false
+
+injection_map03 <- injection_map03 %>%
+  htmlwidgets::onRender("
+    function(el, x) {
+      var css = `
+        .leaflet-popup-content,
+        .leaflet-control,
+        .leaflet-control-legend,
+        .leaflet-tooltip {
+          font-family: Verdana, sans-serif !important;
+          font-size: 11px !important;
+        }
+      `;
+      var style = document.createElement('style');
+      style.type = 'text/css';
+      if (style.styleSheet) {
+        style.styleSheet.cssText = css;
+      } else {
+        style.appendChild(document.createTextNode(css));
+      }
+      document.head.appendChild(style);
+    }
+  ")
+
+injection_map03
+
+```
+
+```{r}
+#| echo: false
+#| results: hide
+
+saveWidget(injection_map03, "qt_outputs/qt12_outputs/injection_map03.html", selfcontained = TRUE)
+# If not installed:
+# install.packages("webshot2")
+mapview::mapshot(
+  x = injection_map03,
+  file = "qt_outputs/qt12_outputs/injection_map03.png",
+  selfcontained = TRUE,
+  vwidth = 1200,       # Width in pixels
+  vheight = 900       # Height in pixels
+)
+```

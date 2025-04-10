@@ -1,0 +1,281 @@
+---
+title: "qt12_01_maps"
+format: html
+---
+
+# Maps
+
+```{r}
+#| echo: false
+#| results: hide
+library(pacman)
+
+# Use pacman to load and install the required packages
+pacman::p_load(
+  arrow,
+  dplyr,
+  flextable,
+  ggplot2,
+  ggspatial,
+  htmltools,
+  htmlwidgets,
+  kableExtra,
+  knitr,
+  leaflet,
+  lubridate,
+  magrittr,
+  mapview,
+  officer,
+  purrr,
+  RColorBrewer,
+  readr, # For reading and writing data
+  readxl,   # For reading Excel files
+  rnaturalearth,
+  rnaturalearthdata,
+  scales,
+  skimr,
+  sf,
+  stringr,
+  tidyverse,
+  tidyr,
+  viridis,
+  webshot2,
+  writexl
+  )
+```
+
+```{r}
+#| echo: false
+#| results: hide
+
+base_colors <- c("black","bisque4","steelblue3", "slategray2","seagreen3")
+base_tono <- c("steelblue1", "bisque","seagreen3","grey23")
+
+```
+
+```{r}
+#| echo: false
+#| results: hide
+
+# points
+loc_effe <- readRDS("qt_inputs/qt12_inputs/loc_effe.rds")
+
+```
+
+```{r}
+#| echo: false
+#| results: hide
+src_ty <- length(unique(loc_effe$source_type))
+custom_palette <- colorRampPalette(base_colors)(src_ty)
+
+loc_nm <- length(unique(loc_effe$Loc))
+loc_palette <- colorRampPalette(base_colors)(loc_nm)
+
+```
+
+```{r}
+#| echo: false
+#| results: hide
+# Folder with all KML files
+kml_files <- list.files("qt_inputs/qt12_inputs/loc_kml/", pattern = "\\.kml$", full.names = TRUE)
+```
+
+```{r}
+#| echo: false
+#| results: hide
+# map_dfr(kml_files, function(f) { ... })
+# Iterates over a vector kml_files (each element is a file path to a KML file)
+# applies a function to each
+# row-binds (_dfr) the results into a single data frame.
+injection_points <- map_dfr(kml_files, function(f) {
+  st_read(f, quiet = TRUE) %>%   # Reads each KML file f into an sf object
+                                 # quiet = TRUE suppresses messages.
+    mutate(
+      kml_file = basename(f),
+      Loc = tools::file_path_sans_ext(kml_file)
+    )
+})
+
+```
+
+```{r}
+#| echo: false
+#| results: hide
+injection_points <- injection_points %>%
+  left_join(loc_effe, by = c("Loc" = "Loc"))  # assuming `Loc` is present
+```
+
+## Natural gas injection points by their source type
+
+This map shows the geographic distribution of natural gas injection points connected to Mexico's national pipeline system (SISTRANGAS). Each dot represents an entry point, color-coded by its type: production fields, processing plants, LNG terminals, pipeline interconnections, or border crossings. The legend in the bottom-left clarifies these categories. Most injection points are concentrated in the northeast and along key coastal and central corridors, reflecting the strategic layout of Mexico's gas infrastructure. The map offers a clear, spatial view of supply sources, supporting operational and regulatory analysis.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+pal <- colorFactor(
+  palette = custom_palette,
+  domain = sort(injection_points$source_type)
+)
+
+leaflet_map <- leaflet(data = injection_points) %>%
+  # Initializes a Leaflet map using the injection_points spatial data frame (sf object)
+  addProviderTiles("CartoDB.Positron") %>%
+  # Adds a light gray basemap from CartoDB (“Positron”) – clean and minimal
+  addCircleMarkers(
+    radius = 4,
+    color = ~pal(source_type),
+    stroke = FALSE,
+    fillOpacity = 0.8,
+    label = ~paste0(Loc.Name, " (", source_type, ")"),
+    popup = ~paste(
+      "<strong>Location:</strong>", Loc.Name,
+      "<br><strong>Node:</strong>", Loc,
+      "<br><strong>Type:</strong>", source_type,
+      "<br><strong>Capacity:</strong>", Design.Capacity
+    ),
+    group = "Injection Points"
+  ) %>%
+  addLegend(
+    position = "bottomleft",
+    pal = pal,
+    values = ~source_type,
+    title = "Tipo de punto de recepción",
+    opacity = 1
+  )
+
+leaflet_map
+```
+
+```{r}
+saveRDS(leaflet_map, "qt_outputs/qt12_outputs/injection_map.rds")
+
+```
+
+```{r}
+### Cambio a Verdana
+leaflet_map <- leaflet_map %>%
+  htmlwidgets::onRender("
+    function(el, x) {
+      var style = document.createElement('style');
+      style.innerHTML = `
+        .leaflet-popup-content, .leaflet-control {
+          font-family: Verdana, sans-serif;
+          font-size: 12px;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  ")
+
+leaflet_map
+
+```
+
+```{r}
+#| echo: false
+#| results: hide
+# Save as HTML
+saveWidget(leaflet_map, "qt_outputs/qt12_outputs/injection_map.html", selfcontained = TRUE)
+
+mapview::mapshot(
+  x = leaflet_map,
+  file = "qt_outputs/qt12_outputs/injection_map.png",
+  selfcontained = TRUE,
+  vwidth = 1200,       # Width in pixels
+  vheight = 900       # Height in pixels
+)
+```
+
+## Natural gas injection points
+
+This map displays the geographic distribution of specific natural gas injection nodes across Mexico's national pipeline system. Each marker corresponds to a unique point of receipt, identified by its node code (e.g., V025, V030), and colored individually for distinction. The legend in the bottom-left matches each color to its respective node code. This layout supports operational mapping and node-level analysis, offering a clear spatial reference for infrastructure planning, balancing strategies, or supply source monitoring across the SISTRANGAS network.
+
+```{r}
+#| echo: false
+
+pal <- colorFactor(
+  palette = loc_palette,
+  domain = sort(injection_points$Loc)
+)
+
+leaflet_map01 <- leaflet(data = injection_points) %>%
+  # Initializes a Leaflet map using the injection_points spatial data frame (sf object)
+  addProviderTiles("CartoDB.Positron") %>%
+  # Adds a light gray basemap from CartoDB (“Positron”) – clean and minimal
+  addCircleMarkers(
+    radius = 4,
+    color = ~pal(Loc),
+    stroke = FALSE,
+    fillOpacity = 0.8,
+    label = ~paste0(Loc),
+    popup = ~paste(
+      "<strong>Location:</strong>", Loc.Name,
+      "<br><strong>Node:</strong>", Loc,
+      "<br><strong>Type:</strong>", source_type,
+      "<br><strong>Capacity:</strong>", Design.Capacity
+    ),
+    group = "Injection Points"
+  ) %>%
+  addLegend(
+    position = "bottomleft",
+    pal = pal,
+    values = ~Loc,
+    title = "Punto de recepción",
+    opacity = 1
+  )
+
+leaflet_map
+
+```
+
+```{r}
+saveRDS(leaflet_map01, "qt_outputs/qt12_outputs/injection_map01.rds")
+```
+
+```{r}
+### Cambio a Verdana
+
+leaflet_map01 <- leaflet_map01 %>%
+ htmlwidgets::onRender("
+    function(el, x) {
+      var css = `
+        .leaflet-popup-content,
+        .leaflet-control,
+        .leaflet-control-legend,
+        .leaflet-tooltip {
+          font-family: Verdana, sans-serif !important;
+          font-size: 11px !important;
+        }
+      `;
+      var style = document.createElement('style');
+      style.type = 'text/css';
+      if (style.styleSheet) {
+        style.styleSheet.cssText = css;
+      } else {
+        style.appendChild(document.createTextNode(css));
+      }
+      document.head.appendChild(style);
+    }
+  ")
+
+leaflet_map01
+```
+
+```{r}
+#| echo: false
+#| results: hide
+# Save as HTML
+saveWidget(leaflet_map01, "qt_outputs/qt12_outputs/injection_map01.html", selfcontained = TRUE)
+
+# If not installed:
+# install.packages("webshot2")
+mapview::mapshot(
+  x = leaflet_map01,
+  file = "qt_outputs/qt12_outputs/injection_map01.png",
+  selfcontained = TRUE,
+  vwidth = 1200,       # Width in pixels
+  vheight = 900       # Height in pixels
+)
+```

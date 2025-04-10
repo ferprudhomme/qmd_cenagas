@@ -1,0 +1,159 @@
+---
+title: "qt12_02_maps"
+format: html
+---
+
+# Check previous Maps
+
+```{r}
+#| echo: false
+#| results: hide
+library(pacman)
+
+# Use pacman to load and install the required packages
+pacman::p_load(
+  arrow,
+  dplyr,
+  flextable,
+  ggplot2,
+  ggspatial,
+  htmltools,
+  htmlwidgets,
+  kableExtra,
+  knitr,
+  leaflet,
+  lubridate,
+  magrittr,
+  mapview,
+  officer,
+  purrr,
+  RColorBrewer,
+  readr, # For reading and writing data
+  readxl,   # For reading Excel files
+  rnaturalearth,
+  rnaturalearthdata,
+  scales,
+  skimr,
+  sf,
+  stringr,
+  tidyverse,
+  tidyr,
+  viridis,
+  webshot2,
+  writexl
+  )
+```
+
+```{r}
+#| echo: false
+#| results: hide
+
+base_colors <- c("black","bisque4","steelblue3", "slategray2","seagreen3")
+base_tono <- c("steelblue1", "bisque","seagreen3","grey23")
+
+```
+
+```{r}
+#| echo: false
+
+# points
+injection_map <- readRDS("qt_outputs/qt12_outputs/injection_map.rds")
+
+injection_map
+
+```
+
+# New map
+
+## Natural gas injection points
+
+This map displays the geographic distribution of specific natural gas injection nodes across Mexico's national pipeline system. Each marker corresponds to a unique point of receipt, identified by its node code (e.g., V025, V030), and colored individually for distinction. The legend in the bottom-left matches each color to its respective node code. This layout supports operational mapping and node-level analysis, offering a clear spatial reference for infrastructure planning, balancing strategies, or supply source monitoring across the SISTRANGAS network.
+
+```{r}
+#| echo: false
+#| results: hide
+
+# points
+injection_map01 <- readRDS("qt_outputs/qt12_outputs/injection_map01.rds")
+
+injection_map01
+
+```
+
+## Natural gas injection point along the network
+
+```{r}
+#| echo: false
+#| results: hide
+#| message: false
+# Read the KML file directly from the path
+sistra <- st_read("qt_inputs/qt12_inputs/tra_kml/SISTRANGAS.kml") %>%
+  st_zm(drop = TRUE, what = "ZM")
+
+```
+
+```{r}
+#| echo: false
+# Create and display the map with leaflet
+# 0 = use leaflet_map01
+# 1 = use leaflet_map
+use_main_map <- 0  # 👈 change this to 0 or 1 as needed
+
+# Select base map based on the binary variable
+selected_map <- if (use_main_map == 1) injection_map else injection_map01
+
+# Now apply your conditional logic
+if (exists("sistra")) {
+  leaflet_map02 <- selected_map %>%
+    addPolylines(data = sistra, color = "dodgerblue", weight = 1)
+}
+
+# Display result
+leaflet_map02
+
+```
+
+```{r}
+#| echo: false
+#| results: hide
+saveRDS(leaflet_map02, "qt_outputs/qt12_outputs/injection_map02.rds")
+
+```
+
+```{r}
+#| echo: false
+
+### Cambio a Verdana
+
+leaflet_map02 <- leaflet_map02 %>%
+  htmlwidgets::onRender("
+    function(el, x) {
+      var style = document.createElement('style');
+      style.innerHTML = `
+        .leaflet-popup-content, .leaflet-control {
+          font-family: Verdana, sans-serif;
+          font-size: 12px;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  ")
+
+leaflet_map02
+```
+
+```{r}
+#| echo: false
+#| results: hide
+
+saveWidget(leaflet_map02, "qt_outputs/qt12_outputs/injection_map02.html", selfcontained = TRUE)
+# If not installed:
+# install.packages("webshot2")
+mapview::mapshot(
+  x = leaflet_map02,
+  file = "qt_outputs/qt12_outputs/injection_map02.png",
+  selfcontained = TRUE,
+  vwidth = 1200,       # Width in pixels
+  vheight = 900       # Height in pixels
+)
+```

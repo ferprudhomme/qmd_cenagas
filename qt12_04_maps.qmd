@@ -1,0 +1,194 @@
+---
+title: "qt12_04_maps"
+format: html
+---
+
+# Check previous Maps
+
+```{r}
+#| echo: false
+#| results: hide
+library(pacman)
+
+# Use pacman to load and install the required packages
+pacman::p_load(
+  arrow,
+  dplyr,
+  flextable,
+  ggplot2,
+  ggspatial,
+  htmltools,
+  htmlwidgets,
+  kableExtra,
+  knitr,
+  leaflet,
+  lubridate,
+  magrittr,
+  mapview,
+  officer,
+  purrr,
+  RColorBrewer,
+  readr, # For reading and writing data
+  readxl,   # For reading Excel files
+  rnaturalearth,
+  rnaturalearthdata,
+  scales,
+  skimr,
+  sf,
+  stringr,
+  tidyverse,
+  tidyr,
+  viridis,
+  webshot2,
+  writexl
+  )
+```
+
+```{r}
+#| echo: false
+
+
+# points
+injection_map03 <- readRDS("qt_outputs/qt12_outputs/injection_map03.rds")
+
+injection_map03
+
+```
+
+# New Map
+
+```{r}
+#| echo: false
+#| results: hide
+# Read and store all privados into a named list
+priv_files <- list.files("qt_inputs/qt12_inputs/priv_kml/", pattern = "^priv_\\d{2}\\.kml$", full.names = TRUE)
+
+privados_list <- purrr::map(priv_files, function(f) {
+  st_read(f, quiet = TRUE) %>%
+    st_zm(drop = TRUE, what = "ZM")
+})
+
+names(privados_list) <- paste0("priv_", sprintf("%02d", 1:length(priv_files)))
+
+
+# Named vector: original name = corrected name
+corrected_names <- c(
+  "Tarahumara Pipeline" = "Tarahumara",
+  "Ojinaga - El Encino" = "Ojinaga-EE",
+  "EL ENCINO - LA LAGUNA" = "EP EE",
+  "LA LAGUNA - AGUASCALIENTES" = "EP LL",
+  "VILLA DE REYES - GUADALAJARA" = "EP O",
+  "GAZA" = "Gaza",
+  "08 G_233_TRA_2009" = "EOM"
+  # Add more as needed...
+  )
+
+```
+
+```{r}
+#| echo: false
+
+selected_priv <- c(1, 2, 3, 4, 5, 6, 7)  # Choose which private systems to include
+injection_map04 <- injection_map03    # Start from base map
+
+# Use a palette with at least as many colors as needed
+palette_colors <- RColorBrewer::brewer.pal(max(selected_priv), "Greens")
+
+# Initialize container for legend labels
+legend_labels <- c()
+legend_labels <- c()
+
+for (i in selected_priv) {
+  priv_id <- paste0("priv_", sprintf("%02d", i))
+  priv_data <- privados_list[[priv_id]]
+  priv_color <- palette_colors[i]
+
+  # Apply corrected name
+  orig_name <- unique(priv_data$Name)[1]
+  fixed_name <- corrected_names[orig_name] %||% orig_name  # fallback to original
+
+  # Update the name column so it shows in popups and labels
+  priv_data$Name <- fixed_name
+  legend_labels <- c(legend_labels, fixed_name)
+
+  injection_map04 <- injection_map04 %>%
+    addPolylines(
+      data = priv_data,
+      color = priv_color,
+      weight = 2,
+      popup = ~Name,
+      label = ~Name,
+      group = fixed_name
+    )
+}
+
+# Add legend with actual names
+injection_map04 <- injection_map04 %>%
+  addLegend(
+    position = "bottomright",
+    colors = palette_colors[selected_priv],
+    labels = legend_labels,
+    title = "Sistemas Privados",
+    opacity = 0.6
+  )
+
+injection_map04
+
+```
+
+```{r}
+#| echo: false
+#| results: hide
+saveRDS(injection_map04, "qt_outputs/qt12_outputs/injection_map04.rds")
+
+```
+
+## New map formatted
+
+```{r}
+#| echo: false
+#| warning: false
+### Cambio a Verdana
+
+injection_map04 <- injection_map04 %>%
+  htmlwidgets::onRender("
+    function(el, x) {
+      var css = `
+        .leaflet-popup-content,
+        .leaflet-control,
+        .leaflet-control-legend,
+        .leaflet-tooltip {
+          font-family: Verdana, sans-serif !important;
+          font-size: 11px !important;
+        }
+      `;
+      var style = document.createElement('style');
+      style.type = 'text/css';
+      if (style.styleSheet) {
+        style.styleSheet.cssText = css;
+      } else {
+        style.appendChild(document.createTextNode(css));
+      }
+      document.head.appendChild(style);
+    }
+  ")
+
+injection_map04
+```
+
+```{r}
+#| echo: false
+#| results: hide
+#| warning: false
+
+saveWidget(injection_map04, "qt_outputs/qt12_outputs/injection_map04.html", selfcontained = TRUE)
+# If not installed:
+# install.packages("webshot2")
+mapview::mapshot(
+  x = injection_map04,
+  file = "qt_outputs/qt12_outputs/injection_map04.png",
+  selfcontained = TRUE,
+  vwidth = 1200,       # Width in pixels
+  vheight = 900       # Height in pixels
+)
+```
