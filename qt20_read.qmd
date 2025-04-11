@@ -1,0 +1,79 @@
+---
+title: "CENAGAS reviewed by Gadex"
+author: "Phase 01. Data reading "
+format: pdf
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+editor: visual
+---
+
+## Lectura
+
+Lista de archivos a leer.
+
+```{r}
+#| echo: false
+
+generate_file_naminy <- function(start_year, end_year, start_month, end_month) {
+  dates <- seq(as.Date(sprintf("%04d-%02d-01", start_year, start_month)),
+               as.Date(sprintf("%04d-%02d-01", end_year, end_month)),
+               by="month")
+  file_naminy <- format(dates, "%Y_%m_iny.xlsx")
+  return(file_naminy)
+}
+
+generate_file_namext <- function(start_year, end_year, start_month, end_month) {
+  dates <- seq(as.Date(sprintf("%04d-%02d-01", start_year, start_month)),
+               as.Date(sprintf("%04d-%02d-01", end_year, end_month)),
+               by="month")
+  file_namext <- format(dates, "%Y_%m_ext.xlsx")
+  return(file_namext)
+}
+
+list_naminy <- generate_file_naminy(2023, 2025, 6, 02)
+list_namext <- generate_file_namext(2023, 2025, 6, 02)
+
+print(list_naminy)
+print(list_namext)
+```
+
+Ruta especifica para lectura de datos.
+
+```{r}
+#| echo: false
+setwd("qt_inputs/qt20_inputs/inex")
+
+# Function to read, rename columns, and convert the 'fecha' column
+
+process_filiny <- function(file_naminy) {
+  data <- readxl::read_excel(file_naminy, sheet = 1)
+  colnames(data) <- c("nodo", "name", "origen", "region", "zona", "energy", "fecha", "unidad")
+  data$fecha <- as.POSIXct(data$fecha, format = "%m-%d-%Y")
+  return(data)
+}
+
+process_filext <- function(file_namext) {
+  datext <- readxl::read_excel(file_namext, sheet = 1)
+  colnames(datext) <- c("nodo", "name", "region", "zona", "energy", "fecha", "unidad")
+  datext$fecha <- as.POSIXct(datext$fecha, format = "%m-%d-%Y")
+  return(datext)
+}
+
+#### Step 03 read columns renaming END ----
+
+#### Step 04 files combining [consolidate data] ----
+# Function to read, rename columns, and convert the 'fecha' column
+
+df_combininy <- do.call(rbind, lapply(list_naminy, process_filiny))
+df_combinext <- do.call(rbind, lapply(list_namext, process_filext))
+
+str(df_combininy)
+str(df_combinext)
+
+```
+
+Exportacion como tibble
+
+```{r}
+saveRDS(df_combininy, "qt_outputs/qt20_outputs/qt20_iny.rds")
+saveRDS(df_combinext, "qt_outputs/qt20_outputs/qt20_ext.rds")
+```
